@@ -163,7 +163,7 @@ if __name__ == '__main__':
 				raise socket.error
 
 			print(data)
-			data = s.recv(1024)
+			# data = s.recv(1024)
 			print(data)
 
 			timer = 0
