@@ -100,8 +100,14 @@ class Traffic:
 
         for dev in net_dev[2:]:
             dev = dev.split(':')
-            # 排除掉 lo, tun, wg, docker 网卡
-            if dev[0].strip() == "lo" or dev[0].find("tun") > -1 or dev[0].find("wg") > -1 or dev[0].find("warp") > -1 or dev[0].find("docker") > -1:
+            # 排除掉 lo, tun, wg, wrap, docker, veth, br- 网卡
+            if dev[0].strip() == "lo" or \
+            dev[0].find("tun") > -1 or \
+            dev[0].find("wg") > -1 or \
+            dev[0].find("warp") > -1 or \
+            dev[0].find("docker") > -1 or \
+            dev[0].find("veth") > -1 or \
+            dev[0].find("br-") > -1:
                 continue
             dev = dev[1].split()
             avgrx += int(dev[0])  # 收到的字节数
@@ -131,7 +137,16 @@ def liuliang():
         for line in f.readlines():
             netinfo = re.findall('([^\s]+):[\s]{0,}(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)', line)
             if netinfo:
-                if netinfo[0][0] == 'lo' or 'tun' in netinfo[0][0] or netinfo[0][1]=='0' or netinfo[0][9]=='0':
+                ifname = netinfo[0][0]
+                # 增加过滤：lo, tun, wg, wrap, docker, veth, br-
+                if ifname == 'lo' or \
+                   'tun' in ifname or \
+                   'wg' in ifname or \
+                   'warp' in ifname or \
+                   'docker' in ifname or \
+                   'veth' in ifname or \
+                   'br-' in ifname or \
+                   netinfo[0][1] == '0' or netinfo[0][9] == '0':
                     continue
                 else:
                     NET_IN += int(netinfo[0][1])
