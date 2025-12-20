@@ -101,7 +101,7 @@ class Traffic:
         for dev in net_dev[2:]:
             dev = dev.split(':')
             # 排除掉 lo, tun, wg, docker 网卡
-            if dev[0].strip() == "lo" or dev[0].find("tun") > -1 or dev[0].find("wg") > -1 or dev[0].find("docker") > -1:
+            if dev[0].strip() == "lo" or dev[0].find("tun") > -1 or dev[0].find("wg") > -1 or dev[0].find("warp") > -1 or dev[0].find("docker") > -1:
                 continue
             dev = dev[1].split()
             avgrx += int(dev[0])  # 收到的字节数
