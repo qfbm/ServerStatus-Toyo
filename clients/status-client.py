@@ -87,36 +87,42 @@ def get_cpu():
 	return round(result)
 
 class Traffic:
-	def __init__(self):
-		self.rx = collections.deque(maxlen=10)
-		self.tx = collections.deque(maxlen=10)
-	def get(self):
-		f = open('/proc/net/dev', 'r')
-		net_dev = f.readlines()
-		f.close()
-		avgrx = 0; avgtx = 0
+    def __init__(self):
+        self.rx = collections.deque(maxlen=10)
+        self.tx = collections.deque(maxlen=10)
+    
+    def get(self):
+        f = open('/proc/net/dev', 'r')
+        net_dev = f.readlines()
+        f.close()
+        avgrx = 0
+        avgtx = 0
 
-		for dev in net_dev[2:]:
-			dev = dev.split(':')
-			if dev[0].strip() == "lo" or dev[0].find("tun") > -1:
-				continue
-			dev = dev[1].split()
-			avgrx += int(dev[0])
-			avgtx += int(dev[8])
+        for dev in net_dev[2:]:
+            dev = dev.split(':')
+            # 排除掉 lo, tun, wg, docker 网卡
+            if dev[0].strip() == "lo" or dev[0].find("tun") > -1 or dev[0].find("wg") > -1 or dev[0].find("docker") > -1:
+                continue
+            dev = dev[1].split()
+            avgrx += int(dev[0])  # 收到的字节数
+            avgtx += int(dev[8])  # 发送的字节数
 
-		self.rx.append(avgrx)
-		self.tx.append(avgtx)
-		avgrx = 0; avgtx = 0
+        self.rx.append(avgrx)
+        self.tx.append(avgtx)
 
-		l = len(self.rx)
-		for x in range(l - 1):
-			avgrx += self.rx[x+1] - self.rx[x]
-			avgtx += self.tx[x+1] - self.tx[x]
+        avgrx = 0
+        avgtx = 0
 
-		avgrx = int(avgrx / l / INTERVAL)
-		avgtx = int(avgtx / l / INTERVAL)
+        # 计算10次更新的平均值
+        l = len(self.rx)
+        for x in range(l - 1):
+            avgrx += self.rx[x+1] - self.rx[x]
+            avgtx += self.tx[x+1] - self.tx[x]
 
-		return avgrx, avgtx
+        avgrx = int(avgrx / l / INTERVAL)
+        avgtx = int(avgtx / l / INTERVAL)
+
+        return avgrx, avgtx
 
 def liuliang():
     NET_IN = 0
