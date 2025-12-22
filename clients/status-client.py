@@ -18,6 +18,8 @@ import subprocess
 import collections
 import platform
 
+PHYSICAL_IFACE_PREFIX = ("eth", "ens", "enp", "eno")
+
 def get_uptime():
 	f = open('/proc/uptime', 'r')
 	uptime = f.readline()
@@ -100,15 +102,11 @@ class Traffic:
 
         for dev in net_dev[2:]:
             dev = dev.split(':')
-            # 排除掉 lo, tun, wg, wrap, docker, veth, br- 网卡
-            if dev[0].strip() == "lo" or \
-            dev[0].find("tun") > -1 or \
-            dev[0].find("wg") > -1 or \
-            dev[0].find("warp") > -1 or \
-            dev[0].find("docker") > -1 or \
-            dev[0].find("veth") > -1 or \
-            dev[0].find("br-") > -1:
+            iface = dev[0].strip()
+            # 增加过滤
+            if not iface.startswith(PHYSICAL_IFACE_PREFIX):
                 continue
+				
             dev = dev[1].split()
             avgrx += int(dev[0])  # 收到的字节数
             avgtx += int(dev[8])  # 发送的字节数
@@ -137,16 +135,9 @@ def liuliang():
         for line in f.readlines():
             netinfo = re.findall('([^\s]+):[\s]{0,}(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)', line)
             if netinfo:
-                ifname = netinfo[0][0]
-                # 增加过滤：lo, tun, wg, wrap, docker, veth, br-
-                if ifname == 'lo' or \
-                   'tun' in ifname or \
-                   'wg' in ifname or \
-                   'warp' in ifname or \
-                   'docker' in ifname or \
-                   'veth' in ifname or \
-                   'br-' in ifname or \
-                   netinfo[0][1] == '0' or netinfo[0][9] == '0':
+                iface = netinfo[0][0]
+                # 增加过滤
+                if not iface.startswith(PHYSICAL_IFACE_PREFIX):
                     continue
                 else:
                     NET_IN += int(netinfo[0][1])
