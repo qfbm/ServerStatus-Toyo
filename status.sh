@@ -99,31 +99,54 @@ Download_Server_Status_server(){
 	fi
 }
 Download_Server_Status_client(){
-	cd "/tmp"
-	wget -N --no-check-certificate "https://raw.githubusercontent.com/qfbm/ServerStatus-Toyo/master/clients/status-client.py"
-	[[ ! -e "status-client.py" ]] && echo -e "${Error} ServerStatus 客户端下载失败 !" && exit 1
-	cd "${file_1}"
-	[[ ! -e "${file}" ]] && mkdir "${file}"
-	if [[ ! -e "${client_file}" ]]; then
-		mkdir "${client_file}"
-		mv "/tmp/status-client.py" "${client_file}/status-client.py"
-	else
-		if [[ -e "${client_file}/status-client.py" ]]; then
-			mv "${client_file}/status-client.py" "${client_file}/status-client1.py"
-			mv "/tmp/status-client.py" "${client_file}/status-client.py"
-		else
-			mv "/tmp/status-client.py" "${client_file}/status-client.py"
-		fi
-	fi
-	if [[ ! -e "${client_file}/status-client.py" ]]; then
-		echo -e "${Error} ServerStatus 客户端移动失败 !"
-		[[ -e "${client_file}/status-client1.py" ]] && mv "${client_file}/status-client1.py" "${client_file}/status-client.py"
-		rm -rf "/tmp/status-client.py"
-		exit 1
-	else
-		[[ -e "${client_file}/status-client1.py" ]] && rm -rf "${client_file}/status-client1.py"
-		rm -rf "/tmp/status-client.py"
-	fi
+    # --- 版本检测逻辑开始 ---
+    # 优先检测 python3，如果没有则尝试 python
+    if command -v python3 >/dev/null 2>&1; then
+        py_ver=$(python3 -V 2>&1 | awk '{print $2}' | cut -d. -f1)
+    elif command -v python >/dev/null 2>&1; then
+        py_ver=$(python -V 2>&1 | awk '{print $2}' | cut -d. -f1)
+    else
+        echo -e "${Error} 未检测到 Python，请先安装 Python !" && exit 1
+    fi
+
+    if [[ "${py_ver}" == "3" ]]; then
+        echo -e "${Info} 检测到 Python 3，正在准备下载 Py3 版客户端..."
+        download_url="https://raw.githubusercontent.com/qfbm/ServerStatus-Toyo/master/clients/status-client-py3.py"
+    else
+        echo -e "${Info} 检测到 Python 2，正在准备下载 Py2 版客户端..."
+        download_url="https://raw.githubusercontent.com/qfbm/ServerStatus-Toyo/master/clients/status-client.py"
+    fi
+    # --- 版本检测逻辑结束 ---
+
+    cd "/tmp"
+    # 使用变量 download_url 下载，并统一命名为 status-client.py 以适配后续逻辑
+    wget -N --no-check-certificate -O "status-client.py" "${download_url}"
+    
+    [[ ! -e "status-client.py" ]] && echo -e "${Error} ServerStatus 客户端下载失败 !" && exit 1
+    
+    cd "${file_1}"
+    [[ ! -e "${file}" ]] && mkdir "${file}"
+    if [[ ! -e "${client_file}" ]]; then
+        mkdir "${client_file}"
+        mv "/tmp/status-client.py" "${client_file}/status-client.py"
+    else
+        if [[ -e "${client_file}/status-client.py" ]]; then
+            mv "${client_file}/status-client.py" "${client_file}/status-client1.py"
+            mv "/tmp/status-client.py" "${client_file}/status-client.py"
+        else
+            mv "/tmp/status-client.py" "${client_file}/status-client.py"
+        fi
+    fi
+
+    if [[ ! -e "${client_file}/status-client.py" ]]; then
+        echo -e "${Error} ServerStatus 客户端移动失败 !"
+        [[ -e "${client_file}/status-client1.py" ]] && mv "${client_file}/status-client1.py" "${client_file}/status-client.py"
+        rm -rf "/tmp/status-client.py"
+        exit 1
+    else
+        [[ -e "${client_file}/status-client1.py" ]] && rm -rf "${client_file}/status-client1.py"
+        rm -rf "/tmp/status-client.py"
+    fi
 }
 Service_Server_Status_server(){
 	if [[ ${release} = "centos" ]]; then
