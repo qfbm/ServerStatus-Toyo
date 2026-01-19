@@ -12,7 +12,8 @@
 
 # 主要修改说明：
 
-* 适配python3
+* 适配debian11 基于python2
+* 适配debian13 基于python3
 
 # 安装教程：     
 
