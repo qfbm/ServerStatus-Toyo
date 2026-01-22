@@ -15,58 +15,69 @@ import subprocess
 import collections
 import platform
 
+PHYSICAL_IFACE_PREFIX = ("eth", "ens", "enp", "eno")
+
 def get_uptime():
-    with open('/proc/uptime', 'r') as f:
-        uptime = f.readline()
-    uptime = uptime.split('.', 2)
-    return int(uptime[0])
+    try:
+        with open('/proc/uptime', 'r') as f:
+            uptime = f.readline().split('.', 1)[0]
+            return int(uptime)
+    except:
+        return 0
 
 def get_memory():
-    # 使用原始字符串 r'' 修复 SyntaxWarning
     re_parser = re.compile(r'^(?P<key>\S*):\s*(?P<value>\d*)\s*kB')
     result = dict()
-    for line in open('/proc/meminfo'):
-        match = re_parser.match(line)
-        if not match:
-            continue
-        key, value = match.groups(['key', 'value'])
-        result[key] = int(value)
+    try:
+        for line in open('/proc/meminfo'):
+            match = re_parser.match(line)
+            if not match:
+                continue
+            key, value = match.groups()
+            result[key] = int(value)
 
-    MemTotal = float(result.get('MemTotal', 0))
-    MemFree = float(result.get('MemFree', 0))
-    Cached = float(result.get('Cached', 0))
-    MemUsed = MemTotal - (Cached + MemFree)
-    SwapTotal = float(result.get('SwapTotal', 0))
-    SwapFree = float(result.get('SwapFree', 0))
-    return int(MemTotal), int(MemUsed), int(SwapTotal), int(SwapFree)
+        MemTotal = float(result.get('MemTotal', 0))
+        MemFree = float(result.get('MemFree', 0))
+        Cached = float(result.get('Cached', 0))
+        Buffers = float(result.get('Buffers', 0))
+        # 更准确的已用内存计算
+        MemUsed = MemTotal - (Cached + MemFree + Buffers)
+        SwapTotal = float(result.get('SwapTotal', 0))
+        SwapFree = float(result.get('SwapFree', 0))
+        return int(MemTotal), int(MemUsed), int(SwapTotal), int(SwapFree)
+    except:
+        return 0, 0, 0, 0
 
 def get_hdd():
     try:
-        p = subprocess.check_output(['df', '-Tlm', '--total', '-t', 'ext4', '-t', 'ext3', '-t', 'ext2', '-t', 'reiserfs', '-t', 'jfs', '-t', 'ntfs', '-t', 'fat32', '-t', 'btrfs', '-t', 'fuseblk', '-t', 'zfs', '-t', 'simfs', '-t', 'xfs']).decode("Utf-8")
-        total = p.splitlines()[-1]
-        used = total.split()[3]
-        size = total.split()[2]
+        # 增加 --total 参数获取最后一行统计
+        p = subprocess.check_output(['df', '-Tlm', '--total', '-t', 'ext4', '-t', 'ext3', '-t', 'ext2', '-t', 'reiserfs', '-t', 'jfs', '-t', 'ntfs', '-t', 'fat32', '-t', 'btrfs', '-t', 'fuseblk', '-t', 'zfs', '-t', 'simfs', '-t', 'xfs'], stderr=subprocess.STDOUT).decode("utf-8")
+        total_line = p.splitlines()[-1]
+        parts = total_line.split()
+        size = parts[2]
+        used = parts[3]
         return int(size), int(used)
     except:
         return 0, 0
 
 def get_load():
-    # 修复正则表达式警告并简化
-    # 如果只是为了获取系统负载，os.getloadavg()[0] 是最标准做法
-    # 这里保留原有的 netstat 逻辑但修复语法
+    # 尝试兼容获取连接数
     try:
-        # 使用 r'' 修复转义
-        cmd = "netstat -anp | grep ESTABLISHED | grep -E 'tcp|tcp6' | grep -E -o '([0-9]{1,3}[.]){3}[0-9]{1,3}' | sort -u | wc -l"
+        # 简化了逻辑，直接通过命令行统计 ESTABLISHED 连接
+        cmd = "netstat -an | grep ESTABLISHED | wc -l"
         tmp_load = os.popen(cmd).read().strip()
-        return float(tmp_load) if tmp_load else 0.0
+        return float(tmp_load)
     except:
         return 0.0
 
 def get_time():
-    # Python 3 必须使用 open() 而不是 file()
-    with open("/proc/stat", "r") as stat_file:
-        time_list = stat_file.readline().split()[1:5] # 修正索引
-    return [int(x) for x in time_list]
+    try:
+        with open("/proc/stat", "r") as f:
+            line = f.readline()
+            time_list = line.split()[1:5] # 获取 user, nice, system, idle
+            return [int(x) for x in time_list]
+    except:
+        return [0, 0, 0, 0]
 
 def delta_time():
     x = get_time()
@@ -81,7 +92,7 @@ def get_cpu():
     st = sum(t)
     if st == 0:
         st = 1
-    # 最后一项通常是 idle time
+    # t[3] 通常是 idle 时间
     result = 100 - (t[3] * 100.0 / st)
     return round(result)
 
@@ -89,49 +100,64 @@ class Traffic:
     def __init__(self):
         self.rx = collections.deque(maxlen=10)
         self.tx = collections.deque(maxlen=10)
+    
     def get(self):
-        with open('/proc/net/dev', 'r') as f:
-            net_dev = f.readlines()
-        
-        avgrx = 0; avgtx = 0
-        for dev in net_dev[2:]:
-            dev_split = dev.split(':')
-            if len(dev_split) < 2: continue
-            if dev_split[0].strip() == "lo" or "tun" in dev_split[0]:
-                continue
-            stats = dev_split[1].split()
-            avgrx += int(stats[0])
-            avgtx += int(stats[8])
+        try:
+            with open('/proc/net/dev', 'r') as f:
+                net_dev = f.readlines()
+            
+            avgrx = 0
+            avgtx = 0
 
-        self.rx.append(avgrx)
-        self.tx.append(avgtx)
-        
-        if len(self.rx) < 2: return 0, 0
-        
-        l = len(self.rx)
-        diff_rx = self.rx[-1] - self.rx[0]
-        diff_tx = self.tx[-1] - self.tx[0]
-        
-        return int(diff_rx / (l-1) / INTERVAL), int(diff_tx / (l-1) / INTERVAL)
+            for dev in net_dev[2:]:
+                dev_parts = dev.split(':')
+                if len(dev_parts) < 2: continue
+                iface = dev_parts[0].strip()
+                
+                if not iface.startswith(PHYSICAL_IFACE_PREFIX):
+                    continue
+                
+                data = dev_parts[1].split()
+                avgrx += int(data[0])
+                avgtx += int(data[8])
+
+            self.rx.append(avgrx)
+            self.tx.append(avgtx)
+
+            if len(self.rx) < 2:
+                return 0, 0
+
+            # 计算平均速率
+            diff_rx = self.rx[-1] - self.rx[0]
+            diff_tx = self.tx[-1] - self.tx[0]
+            
+            # 这里的计算逻辑根据采样次数平滑
+            period = (len(self.rx) - 1) * INTERVAL
+            return int(diff_rx / period), int(diff_tx / period)
+        except:
+            return 0, 0
 
 def liuliang():
     NET_IN = 0
     NET_OUT = 0
-    with open('/proc/net/dev') as f:
-        for line in f:
-            # 使用 r'' 修复 SyntaxWarning
-            netinfo = re.findall(r'([^\s]+):[\s]{0,}(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)', line)
-            if netinfo:
-                if netinfo[0][0] == 'lo' or 'tun' in netinfo[0][0] or netinfo[0][1]=='0':
-                    continue
-                NET_IN += int(netinfo[0][1])
-                NET_OUT += int(netinfo[0][9])
+    try:
+        with open('/proc/net/dev') as f:
+            for line in f:
+                if ":" not in line: continue
+                iface, data = line.split(":")
+                iface = iface.strip()
+                if iface.startswith(PHYSICAL_IFACE_PREFIX):
+                    parts = data.split()
+                    NET_IN += int(parts[0])
+                    NET_OUT += int(parts[8])
+    except:
+        pass
     return NET_IN, NET_OUT
 
 def get_network(ip_version):
-    HOST = "ipv4.google.com" if ip_version == 4 else "ipv6.google.com"
+    host = "ipv4.google.com" if ip_version == 4 else "ipv6.google.com"
     try:
-        socket.create_connection((HOST, 80), 2)
+        socket.create_connection((host, 80), 2)
         return True
     except:
         return False
@@ -144,30 +170,35 @@ if __name__ == '__main__':
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((SERVER, PORT))
             
-            # Python 3 需要 decode 接收到的数据
-            data = s.recv(1024).decode('utf-8')
+            # Python 3 接收的是 bytes，需要 decode
+            data = s.recv(1024).decode('utf-8', 'ignore')
+            
             if "Authentication required" in data:
-                auth = USER + ':' + PASSWORD + '\n'
-                s.send(auth.encode('utf-8')) # 需要 encode 为 bytes
-                data = s.recv(1024).decode('utf-8')
+                auth_str = USER + ':' + PASSWORD + '\n'
+                s.send(auth_str.encode('utf-8'))
+                data = s.recv(1024).decode('utf-8', 'ignore')
                 if "Authentication successful" not in data:
-                    print(data)
+                    print("Auth Failed:", data)
                     raise socket.error
             else:
-                print(data)
+                print("Unexpected Response:", data)
                 raise socket.error
 
-            data = s.recv(1024).decode('utf-8')
+            # 继续读取握手后的协议信息
+            data = s.recv(1024).decode('utf-8', 'ignore')
+            
             check_ip = 0
             if "IPv4" in data:
                 check_ip = 6
             elif "IPv6" in data:
                 check_ip = 4
             else:
-                raise socket.error
+                raise socket.error("IP Check Protocol Error")
 
             traffic = Traffic()
+            traffic.get()
             timer = 0
+            
             while True:
                 CPU = get_cpu()
                 NetRx, NetTx = traffic.get()
@@ -200,15 +231,21 @@ if __name__ == '__main__':
                     'network_out': NET_OUT
                 })
 
-                msg = "update " + json.dumps(array) + "\n"
-                s.send(msg.encode('utf-8'))
+                send_data = "update " + json.dumps(array) + "\n"
+                s.send(send_data.encode('utf-8'))
+                # 控制循环频率（get_cpu里已经有sleep了）
+                
         except KeyboardInterrupt:
+            print("Stopping...")
             break
-        except socket.error:
-            print("Disconnected...")
-            if 's' in locals(): s.close()
+        except socket.error as e:
+            print("Disconnected... Error:", e)
             time.sleep(3)
         except Exception as e:
             print("Caught Exception:", e)
-            if 's' in locals(): s.close()
             time.sleep(3)
+        finally:
+            try:
+                s.close()
+            except:
+                pass
