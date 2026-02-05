@@ -64,7 +64,7 @@ def get_load():
     # 尝试兼容获取连接数
     try:
         # 简化了逻辑，直接通过命令行统计 ESTABLISHED 连接
-        cmd = "netstat -an | grep ESTABLISHED | wc -l"
+        cmd = "netstat -anp |grep ESTABLISHED |grep tcp6 |awk '{print $5}' |awk -F ':' '{print $1}' |sort -u |grep -E -o '([0-9]{1,3}[\.]){3}[0-9]{1,3}' |wc -l"
         tmp_load = os.popen(cmd).read().strip()
         return float(tmp_load)
     except:
